@@ -1,0 +1,27 @@
+<!-- A bad config on purpose. This is what you get by excluding whatever tops the noise
+     list without asking what it hides. Used to measure what the blind spot costs. -->
+<Sysmon schemaversion="4.81">
+  <EventFiltering>
+    <RuleGroup name="process" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <Image condition="is">/usr/bin/curl</Image>
+        <Image condition="is">/usr/bin/bash</Image>
+        <Image condition="is">/usr/bin/dash</Image>
+        <Image condition="is">/usr/bin/rm</Image>
+        <Image condition="is">/usr/bin/cat</Image>
+        <Image condition="is">/usr/bin/sleep</Image>
+        <Image condition="is">/usr/bin/grep</Image>
+        <Image condition="is">/usr/bin/ps</Image>
+        <Image condition="is">/usr/bin/date</Image>
+        <Image condition="is">/usr/bin/ls</Image>
+        <Image condition="is">/usr/bin/python3.10</Image>
+      </ProcessCreate>
+    </RuleGroup>
+    <RuleGroup name="off" groupRelation="or">
+      <ProcessTerminate onmatch="include"/>
+      <NetworkConnect onmatch="include"/>
+      <FileCreate onmatch="include"/>
+      <FileDelete onmatch="include"/>
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>

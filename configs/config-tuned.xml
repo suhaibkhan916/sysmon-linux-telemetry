@@ -1,0 +1,50 @@
+<!-- Tuned from the noisy capture. Exclusions are narrow (exact command lines),
+     file events are include-only on paths that matter, RuleName carries the ATT&CK id. -->
+<Sysmon schemaversion="4.81">
+  <EventFiltering>
+    <RuleGroup name="process" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <!-- service health loop, exact strings only so an attacker's curl stays visible -->
+        <CommandLine condition="is">curl -s -m 2 -o /dev/null http://listener:8000/healthz</CommandLine>
+        <CommandLine condition="is">ps aux</CommandLine>
+        <CommandLine condition="is">date</CommandLine>
+        <CommandLine condition="is">grep -c root /etc/passwd</CommandLine>
+        <CommandLine condition="is">ls /etc/cron.d</CommandLine>
+        <CommandLine condition="is">python3 -c print('app metrics tick')</CommandLine>
+        <CommandLine condition="begin with">rm -f /tmp/app-job-</CommandLine>
+        <Image condition="is">/usr/bin/sleep</Image>
+      </ProcessCreate>
+    </RuleGroup>
+    <RuleGroup name="terminate" groupRelation="or">
+      <!-- The largest event type in the noisy capture and nothing here reads it. An empty include logs none. -->
+      <ProcessTerminate onmatch="include"/>
+    </RuleGroup>
+    <RuleGroup name="network" groupRelation="or">
+      <NetworkConnect onmatch="exclude">
+        <DestinationPort condition="is">53</DestinationPort>
+        <Initiated condition="is">false</Initiated>
+        <!-- health checks. This also hides an attacker's curl to port 8000, but the
+             ProcessCreate event for that curl still has the full command line. -->
+        <Rule groupRelation="and">
+          <Image condition="is">/usr/bin/curl</Image>
+          <DestinationPort condition="is">8000</DestinationPort>
+        </Rule>
+      </NetworkConnect>
+    </RuleGroup>
+    <RuleGroup name="filecreate" groupRelation="or">
+      <FileCreate onmatch="include">
+        <TargetFilename name="T1053.003" condition="begin with">/etc/cron</TargetFilename>
+        <TargetFilename name="T1053.003" condition="begin with">/var/spool/cron</TargetFilename>
+        <TargetFilename name="T1098.004" condition="end with">/.ssh/authorized_keys</TargetFilename>
+        <TargetFilename name="T1105" condition="begin with">/tmp/.</TargetFilename>
+        <TargetFilename name="T1105" condition="begin with">/dev/shm/</TargetFilename>
+      </FileCreate>
+    </RuleGroup>
+    <RuleGroup name="filedelete" groupRelation="or">
+      <FileDelete onmatch="include">
+        <TargetFilename name="T1070.004" condition="begin with">/tmp/.</TargetFilename>
+        <TargetFilename name="T1070.004" condition="begin with">/dev/shm/</TargetFilename>
+      </FileDelete>
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>
