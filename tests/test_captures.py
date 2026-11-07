@@ -9,6 +9,7 @@ import pytest
 from sysmontel.__main__ import main
 from sysmontel.detections import ALL_RULES
 from sysmontel.metrics import load_capture
+from sysmontel.parser import parse_file
 
 ROOT = Path(__file__).resolve().parent.parent
 CAPTURES = ROOT / "data" / "captures"
@@ -68,7 +69,17 @@ def test_guid_lineage_misses_the_redirect_event(noisy, tuned):
 def test_captures_hold_no_host_paths_or_personal_data(path):
     """Docker Desktop exposed the host path in a FileCreate once. Stop that coming back."""
     text = path.read_text(encoding="utf-8")
-    assert not re.search(r"Users/|/mnt/host", text, re.I)
+    assert not re.search(r"Users/|/mnt/|AppData|@[a-z0-9-]+\.(?:com|net|org)", text, re.I)
+
+
+@pytest.mark.parametrize("path", sorted(CAPTURES.glob("*.log")), ids=lambda p: p.name)
+def test_captures_only_name_lab_hosts_and_lab_paths(path):
+    """An allow list, so an unexpected value fails without anyone guessing the string."""
+    allowed = ("/etc/", "/tmp/", "/var/log/", "/root/.ssh/", "/home/svc_backup/", "/dev/shm/")
+    for event in parse_file(path).events:
+        assert event.computer == "lab-sensor"
+        if event.target:
+            assert event.target.startswith(allowed), event.target
 
 
 @pytest.mark.parametrize("path", sorted((ROOT / "configs").glob("*.xml")), ids=lambda p: p.name)
@@ -115,3 +126,10 @@ def test_cli_writes_reports(tmp_path, capsys):
     assert "Detection coverage" in report
     assert "synthetic" in report
     assert (tmp_path / "metrics.json").exists()
+
+
+def test_cli_exit_two_when_reports_cannot_be_written(capsys, tmp_path):
+    blocker = tmp_path / "a-file"
+    blocker.write_text("x", encoding="utf-8")
+    assert main([str(NOISY), "--out", str(blocker)]) == 2
+    assert "cannot write" in capsys.readouterr().err

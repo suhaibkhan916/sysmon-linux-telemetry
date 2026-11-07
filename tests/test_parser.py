@@ -56,3 +56,14 @@ def test_parse_file(tmp_path):
     path = tmp_path / "x.log"
     path.write_text(syslog_line(5, ProcessId=9) + "\n", encoding="utf-8")
     assert parse_file(path).events[0].event_id == 5
+
+
+def test_non_numeric_event_id_is_counted_not_a_crash():
+    line = syslog_line(1, ProcessId=1).replace("<EventID>1<", "<EventID>abc<")
+    log = parse_lines([line, syslog_line(1, ProcessId=2)])
+    assert (len(log.events), log.bad_lines) == (1, 1)
+
+
+def test_missing_or_bad_time_gives_none():
+    assert parse_line(syslog_line(1, ProcessId=1)).when is not None
+    assert parse_line(syslog_line(1, UtcTime="soon")).when is None

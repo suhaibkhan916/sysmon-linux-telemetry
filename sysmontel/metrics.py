@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 
-from sysmontel.detections import ALL_RULES, TIME_FORMAT, Alert, detect
+from sysmontel.detections import ALL_RULES, Alert, detect
 from sysmontel.lineage import find_attack_root, guid_lineage_events, pid_lineage, split_signal
 from sysmontel.parser import ParsedLog, SysmonEvent, parse_file
 
@@ -43,11 +42,8 @@ class CaptureMetrics:
 
 
 def _duration(events: list[SysmonEvent]) -> float:
-    if len(events) < 2:
-        return 0.0
-    first = datetime.strptime(events[0].time, TIME_FORMAT)
-    last = datetime.strptime(events[-1].time, TIME_FORMAT)
-    return (last - first).total_seconds()
+    times = [when for when in (e.when for e in events) if when is not None]
+    return (max(times) - min(times)).total_seconds() if times else 0.0
 
 
 def top_noise(noise: list[SysmonEvent], limit: int = 10) -> list[tuple[str, int]]:

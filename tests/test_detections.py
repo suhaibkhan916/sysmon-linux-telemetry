@@ -115,3 +115,53 @@ def test_alerts_are_in_time_order():
 def test_every_rule_has_a_technique_and_a_required_event():
     assert len(ALL_RULES) == 8
     assert set(RULE_NEEDS) == set(RULE_TECHNIQUE) == set(ALL_RULES)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "curl -so /tmp/x http://a",
+        "curl -o/tmp/x http://a",
+        "curl --output /tmp/x http://a",
+        "curl --output=/tmp/x http://a",
+        "wget -O /var/tmp/x http://a",
+        "wget --output-document=/dev/shm/x http://a",
+        "wget -P /tmp http://a",
+        "wget --directory-prefix=/tmp http://a",
+    ],
+)
+def test_download_to_temp_reads_every_output_flag(command):
+    image = "/usr/bin/" + command.split()[0]
+    assert rules(event(1, Image=image, CommandLine=command)) == ["download_to_temp"]
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "curl -o /tmpfiles/x http://a",
+        "curl http://a/tmp/x",
+        "curl -H /tmp/x http://a",
+    ],
+)
+def test_download_to_temp_needs_a_real_temp_output(command):
+    assert rules(event(1, Image="/usr/bin/curl", CommandLine=command)) == []
+
+
+def test_decode_with_no_parent_pid_does_not_fire():
+    decoder = event(1, ProcessId=1, Image="/usr/bin/base64", CommandLine="base64 -d")
+    shell = event(1, ProcessId=2, Image="/usr/bin/bash", CommandLine="bash")
+    assert rules(decoder, shell) == []
+
+
+def test_decode_with_a_bad_time_does_not_crash():
+    decoder, shell = decode_pair()
+    broken = event(
+        1,
+        ProcessId=21,
+        ParentProcessId=7,
+        Image="/usr/bin/dash",
+        CommandLine="sh",
+        UtcTime="soon",
+    )
+    assert rules(decoder, shell) == [DECODE_RULE]
+    assert rules(decoder, broken) == []

@@ -9,15 +9,17 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
 
 from sysmontel.parser import SysmonEvent
 
 SHELLS = {"/usr/bin/bash", "/bin/bash", "/usr/bin/dash", "/bin/dash", "/bin/sh", "/usr/bin/sh"}
-_TEMP_OUTPUT = re.compile(r"(?:-o|--output|-O|>)\s*(?:/tmp/|/dev/shm/|/var/tmp/)")
+# curl -o, combined flags such as -so, --output=, wget -O, wget -P and --directory-prefix.
+_TEMP_OUTPUT = re.compile(
+    r"(?:^|\s)(?:-[a-zA-Z]*[oOP]|--output(?:-document)?|--directory-prefix)(?:\s+|=)?"
+    r"/(?:tmp|dev/shm|var/tmp)(?:/|\s|$)"
+)
 _ACCOUNT_TOOLS = {"useradd", "adduser"}
 _SHADOW_TOOLS = {"passwd", "chage", "useradd", "usermod", "userdel", "unix_chkpwd", "pwck"}
-TIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 DECODE_WINDOW_SECONDS = 0.5  # members of one pipeline start within milliseconds
 
 
@@ -87,10 +89,6 @@ class Alert:
     detail: str
 
 
-def _seconds(event: SysmonEvent) -> float:
-    return datetime.strptime(event.time, TIME_FORMAT).timestamp()
-
-
 def _decoded_into_shell(events: list[SysmonEvent]) -> list[Alert]:
     """base64 -d with a shell started by the same parent moments apart.
 
@@ -102,12 +100,17 @@ def _decoded_into_shell(events: list[SysmonEvent]) -> list[Alert]:
     for e in procs:
         if _basename(e.image) != "base64" or not re.search(r"\s(-d|--decode)\b", e.command):
             continue
+        when = e.when
+        # Two events with no parent or no time say nothing about being in one pipeline.
+        if e.parent_pid is None or when is None:
+            continue
         for other in procs:
             if (
                 other.image in SHELLS
                 and other.parent_pid == e.parent_pid
                 and other.pid != e.pid
-                and abs(_seconds(other) - _seconds(e)) <= DECODE_WINDOW_SECONDS
+                and other.when is not None
+                and abs((other.when - when).total_seconds()) <= DECODE_WINDOW_SECONDS
             ):
                 detail = f"{e.command} next to {other.image} ({other.command})"
                 alerts.append(Alert(DECODE_RULE, DECODE_TECHNIQUE, e, detail))

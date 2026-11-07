@@ -28,7 +28,11 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(coverage_table(captures))
     if args.out:
-        write_reports(captures, Path(args.out))
+        try:
+            write_reports(captures, Path(args.out))
+        except OSError as exc:
+            print(f"cannot write reports to {args.out}: {exc}", file=sys.stderr)
+            return 2
         print(f"\nreports written to {args.out}")
     return 1 if any(c.rules_missed for c in captures) else 0
 

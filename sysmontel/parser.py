@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 EVENT_NAMES = {
@@ -26,6 +27,7 @@ EVENT_NAMES = {
 }
 
 ZERO_GUID = "{00000000-0000-0000-0000-000000000000}"
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,14 @@ class SysmonEvent:
     @property
     def time(self) -> str:
         return self.get("UtcTime")
+
+    @property
+    def when(self) -> datetime | None:
+        """The time as a datetime, or None if the event has no usable time."""
+        try:
+            return datetime.strptime(self.time, TIME_FORMAT)
+        except ValueError:
+            return None
 
     @property
     def image(self) -> str:
@@ -80,7 +90,7 @@ def _to_int(value: str) -> int | None:
 def parse_line(line: str) -> SysmonEvent | None:
     """Return the event in one syslog line, or None if the line holds no event.
 
-    Raises ET.ParseError if the line has an event that is cut off or malformed.
+    Raises ET.ParseError if the event is cut off, ValueError if its EventID is not a number.
     """
     start = line.find("<Event>")
     if start < 0:
@@ -100,7 +110,7 @@ def parse_lines(lines: list[str]) -> ParsedLog:
         log.total_bytes += len(line.encode("utf-8"))
         try:
             event = parse_line(line)
-        except ET.ParseError:
+        except (ET.ParseError, ValueError):
             log.bad_lines += 1
             continue
         if event is None:
