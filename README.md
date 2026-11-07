@@ -43,7 +43,7 @@ Event mix in the noisy capture: 209 ProcessTerminate (42.9%), 161 ProcessCreate,
 
 The one false alert is real and left in: the benign workload runs `curl -o /tmp/app-update.tar`, which looks the same as the attacker's download to `download_to_temp`. A Sysmon config cannot fix that, because the telemetry is correct. The rule needs an allow list, or a rule on hidden file names.
 
-Checks in this build: 60 pytest tests pass on Python 3.14 locally and on Python 3.10 in a `python:3.10-slim` container. `ruff check` and `ruff format --check` are clean. Seven hand-made mutations of the rules, labels and CLI (for example removing the `Initiated` check) were each caught by a test. CI has not run yet because the repo has not been pushed.
+Checks in this build: 79 pytest tests pass on Python 3.14 locally and on Python 3.10, 3.12 and 3.13 in `python:*-slim` containers, using the same steps as the CI file. `ruff check` and `ruff format --check` are clean. Seven hand-made mutations of the rules, labels and CLI (for example removing the `Initiated` check) were each caught by a test. The GitHub Actions workflow itself has not run yet because the repo has not been pushed.
 
 ## How to run
 
@@ -66,12 +66,14 @@ This builds the image, starts a listener container on an internal network and ru
 
 ## What broke and how it was fixed
 
-- **Sysmon's install needs systemd.** `sysmon -accepteula -i` printed `systemctl: not found` four times. The unit file it writes (`/etc/systemd/system/sysmon.service`) shows the real command, `/opt/sysmon/sysmon -i /opt/sysmon/config.xml -service`, so `run_capture.sh` starts that directly. My first guess, `sysmon -service` with no config, started with no error and produced no events.
+- **Sysmon's install needs systemd.** `sysmon -accepteula -i` printed `systemctl: not found` four times. The unit file it writes (`/etc/systemd/system/sysmon.service`) shows the real command, `/opt/sysmon/sysmon -i /opt/sysmon/config.xml -service`, so `run_capture.sh` starts that directly. A first attempt, `sysmon -service` with no config, started with no error and produced no events.
 - **eBPF would not attach.** `libbpf: failed to determine tracepoint 'sched/sched_process_exit' perf event ID: -ENOENT`, then `Telemetry failed to start`. Tracepoint ids live in tracefs, which a container does not mount. Fixed by mounting debugfs and tracefs at the start of `run_capture.sh`.
-- **A host path leaked into the data.** The first capture redirected straight to `/out/config-noisy.log`. That write was itself a FileCreate event, and on Docker Desktop its `TargetFilename` held the full Windows user path. A scrub grep found it before any commit. The capture is now built inside the container and copied out last, and a test fails if a host path or personal string appears in a capture.
+- **A host path leaked into the data.** The first capture redirected straight to `/out/config-noisy.log`. That write was itself a FileCreate event, and on Docker Desktop its `TargetFilename` held the full Windows user path. A scrub grep found it before any commit. The capture is now built inside the container and copied out last. Two tests guard this: one fails on host path or email patterns, and one holds an allow list of host names and file locations, so an unexpected value fails without anyone having to guess the string.
 - **Every event was labelled noise.** The first labelling used `$!` from the capture script as the attack root. It gave 8531 where Sysmon reported 8977 for the same process, so signal was 0 and every detection showed as missed, while the alerts themselves looked right. Even with `--pid=host`, Docker Desktop's PID namespace is nested and Sysmon reports kernel root namespace PIDs. Fixed with a marker: `attack.sh` runs `printenv LAB_ATTACK_ROOT_MARKER`, and that event's `ParentProcessId` gives the root in Sysmon's numbering. This also means the truth file was removed.
 - **ProcessGuid lineage drops an event.** `cat /etc/shadow > /tmp/.s` opens the file after fork and before exec, so the FileCreate says `Image=/usr/bin/bash` with an all-zero `ProcessGuid`. It is the file holding the stolen hashes. Walking GUIDs finds 79 of the 80 signal events and misses this one. Labels use PID lineage. A test pins the difference.
 - **`decoded_into_shell` matched the wrong process.** With a 2-second window it paired `base64 -d` with an unrelated `bash -c` from the previous attack stage, so it fired for the wrong reason. Members of one pipeline start within milliseconds, so the window is now 0.5 seconds and the alert names the `sh` it really matched.
+
+- **A code review found five more bugs that the tests had not.** A non-numeric `EventID` stopped the whole run instead of counting as a bad line. An event with no usable time crashed the metrics. `decoded_into_shell` fired on two events with no parent PID, because `None == None`. `download_to_temp` missed `-so`, `--output=`, `--output-document=` and `wget -P`. A report folder that could not be written gave a traceback instead of exit code 2. All have regression tests. The captures and the results above did not change.
 
 ## Limitations
 
