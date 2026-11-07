@@ -43,7 +43,7 @@ Event mix in the noisy capture: 209 ProcessTerminate (42.9%), 161 ProcessCreate,
 
 The one false alert is real and left in: the benign workload runs `curl -o /tmp/app-update.tar`, which looks the same as the attacker's download to `download_to_temp`. A Sysmon config cannot fix that, because the telemetry is correct. The rule needs an allow list, or a rule on hidden file names.
 
-Checks in this build: 79 pytest tests pass on Python 3.14 locally and on Python 3.10, 3.12 and 3.13 in `python:*-slim` containers, using the same steps as the CI file. `ruff check` and `ruff format --check` are clean. Seven hand-made mutations of the rules, labels and CLI (for example removing the `Initiated` check) were each caught by a test. The GitHub Actions workflow itself has not run yet because the repo has not been pushed.
+Checks in this build: 79 pytest tests pass on Python 3.14 locally and on Python 3.10, 3.12 and 3.13 in `python:*-slim` containers, using the same steps as the CI file. `ruff check` and `ruff format --check` are clean. Seven hand-made mutations of the rules, labels and CLI (for example removing the `Initiated` check) were each caught by a test. The same steps pass on GitHub Actions.
 
 ## How to run
 
